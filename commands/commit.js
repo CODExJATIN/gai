@@ -39,6 +39,53 @@ export default function commitCommand(program) {
         process.exit(1);
       }
 
+      // Get unstaged & untracked files
+      const statusOutput = execSync('git status -s', { encoding: 'utf-8' });
+      const files = statusOutput
+        .split('\n')
+        .filter(Boolean)
+        .map(line => {
+          // git status -s is exactly 2 chars of status, 1 space, then the filename
+          const status = line.substring(0, 2);
+          let file = line.substring(3).trim();
+          // Remove surrounding quotes if git added them
+          if (file.startsWith('"') && file.endsWith('"')) {
+             file = file.slice(1, -1);
+          }
+          return { name: file, message: `${status} ${file}` };
+        });
+
+      if (files.length > 0) {
+        // Only run interactive prompt if we're in a TTY
+        if (process.stdin.isTTY) {
+          try {
+            const enquirer = await import('enquirer');
+            const MultiSelect = enquirer.MultiSelect || enquirer.default.MultiSelect;
+            
+            const prompt = new MultiSelect({
+              name: 'files',
+              message: 'Select files to stage (Space to select, Enter to confirm)',
+              choices: files,
+              result(names) {
+                return names; // Return selected file names array
+              }
+            });
+            const selectedFiles = await prompt.run();
+            
+            if (selectedFiles.length > 0) {
+              execSync(`git add ${selectedFiles.map(f => `"${f}"`).join(' ')}`);
+              console.log(`staged ${selectedFiles.length} file(s)`);
+            }
+          } catch (err) {
+            if (err) {
+              console.log('error during prompt: ' + (err.message || err));
+            }
+            // Prompt cancelled by user (Ctrl+C) or errored
+            process.exit(err ? 1 : 0);
+          }
+        }
+      }
+
       const diff = getStagedDiff();
       if (!diff.trim()) {
         console.log('no staged changes');

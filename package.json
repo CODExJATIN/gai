@@ -9,6 +9,7 @@
   "dependencies": {
     "@google/genai": "^1.46.0",
     "axios": "^1.7.0",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "enquirer": "^2.4.1"
   }
 }
