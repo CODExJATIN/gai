@@ -25,14 +25,14 @@ export default function startCommand(program) {
         }
         const model = (await ask(rl, 'model (gemini-2.0-flash): ')) || 'gemini-2.0-flash';
         setConfig('provider', provider);
-        setConfig('apiKey', apiKey);
-        setConfig('model', model);
+        setConfig('gemini.apiKey', apiKey);
+        setConfig('gemini.model', model);
       } else if (provider === 'ollama') {
         const model = (await ask(rl, 'model (llama3): ')) || 'llama3';
         const endpoint = (await ask(rl, 'endpoint (http://localhost:11434): ')) || 'http://localhost:11434';
         setConfig('provider', provider);
-        setConfig('model', model);
-        setConfig('endpoint', endpoint);
+        setConfig('ollama.model', model);
+        setConfig('ollama.endpoint', endpoint);
       } else {
         console.log('unknown provider: ' + provider);
         rl.close();

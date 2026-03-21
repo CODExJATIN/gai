@@ -12,5 +12,7 @@ export function getAI(config) {
   if (!Provider) {
     throw new Error(`unknown provider: ${name}`);
   }
-  return new Provider(config);
+  // Pass only the relevant namespaced config block
+  const providerConfig = config[name] || {};
+  return new Provider(providerConfig);
 }
