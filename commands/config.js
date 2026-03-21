@@ -12,11 +12,18 @@ export default function configCommand(program) {
       const config = getConfig();
       const provider = config.provider || 'gemini';
       
+      // Normalize common keys
+      const lowerKey = key.toLowerCase();
+      let normalizedKey = key;
+      if (lowerKey === 'apikey') normalizedKey = 'apiKey';
+      if (lowerKey === 'model') normalizedKey = 'model';
+      if (lowerKey === 'endpoint') normalizedKey = 'endpoint';
+
       // If key doesn't have a dot and is provider-specific, prefix it
-      let fullKey = key;
-      if (!key.includes('.')) {
-        if (['model', 'apiKey', 'endpoint'].includes(key)) {
-          fullKey = `${provider}.${key}`;
+      let fullKey = normalizedKey;
+      if (!normalizedKey.includes('.')) {
+        if (['model', 'apiKey', 'endpoint'].includes(normalizedKey)) {
+          fullKey = `${provider}.${normalizedKey}`;
         }
       }
 
