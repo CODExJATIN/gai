@@ -49,12 +49,14 @@ export default function commitCommand(program) {
         ? diff.slice(0, MAX_DIFF_LENGTH) + '\n[truncated]'
         : diff;
 
-      const prompt = `Generate a concise git commit message.
+const prompt = `Generate a concise git commit message.
 
 Rules:
 - Use conventional commits (feat, fix, chore, etc.)
 - Max 1 line
 - No explanation
+- DO NOT use markdown code blocks or triple backticks (\`\`\`)
+- Output ONLY the raw commit message
 
 Diff:
 ${truncated}`;
@@ -65,6 +67,12 @@ ${truncated}`;
       let message;
       try {
         message = await ai.generate(prompt);
+        if (message) {
+          // Strip markdown code blocks
+          message = message.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '').replace(/^```/g, '').replace(/```$/g, '').trim();
+          // Force single line (take first non-empty line)
+          message = message.split('\n').map(line => line.trim()).filter(Boolean)[0] || message;
+        }
       } catch (err) {
         console.log('ai error: ' + (err.message || err));
         process.exit(1);
