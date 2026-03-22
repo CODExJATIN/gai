@@ -1,10 +1,27 @@
 {
-  "name": "gai",
-  "version": "1.0.0",
+  "name": "@codexjatin/gai",
+  "version": "1.0.1",
   "description": "Minimal Git + AI CLI tool",
   "type": "module",
   "bin": {
     "gai": "./dist/gai.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "git",
+    "ai",
+    "commit",
+    "cli",
+    "gemini",
+    "ollama"
+  ],
+  "author": "",
+  "repository": {
+    "type": "git"
   },
   "scripts": {
     "build": "tsup bin/gai.js --format esm --clean",

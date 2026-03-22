@@ -4,19 +4,21 @@ A minimal, terminal-native CLI tool that supercharges your Git workflow with AI.
 
 
 
-## Installation (Development)
+## Installation
 
-This project is currently under development. To use it locally:
+Install `gai` globally via npm:
 
-1. Clone or download the repository
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Link the package globally:
-   ```bash
-   npm link
-   ```
+```bash
+npm install -g @codexjatin/gai
+```
+
+### Development Setup
+
+To contribute or run from source:
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Link the package: `npm link`
 
 ## Setup
 
