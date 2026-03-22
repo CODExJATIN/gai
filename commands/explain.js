@@ -1,5 +1,10 @@
 import { getAI } from '../ai/index.js';
 import { getConfig } from '../utils/config.js';
+import React from 'react';
+import { render } from 'ink';
+import { show } from '../ui/prompt.jsx';
+import LoadingSpinner from '../ui/LoadingSpinner.jsx';
+import Alert from '../ui/Alert.jsx';
 
 function readStdin() {
   return new Promise((resolve, reject) => {
@@ -25,8 +30,9 @@ export default function explainCommand(program) {
       input = input.trim();
 
       if (!input) {
-        console.log('provide input or pipe data');
-        process.exit(1);
+        await show(Alert, { type: 'error', title: 'Error', children: 'Provide input or pipe data' });
+        setTimeout(() => process.exit(1), 100);
+        return;
       }
 
       const prompt = `Explain the following error in simple terms and suggest a fix:
@@ -38,17 +44,21 @@ ${input}`;
 
       let response;
       try {
+        const spinner = render(React.createElement(LoadingSpinner, { message: 'Analyzing error...' }));
         response = await ai.generate(prompt);
+        spinner.unmount();
       } catch (err) {
-        console.log('ai error: ' + (err.message || err));
-        process.exit(1);
+        await show(Alert, { type: 'error', title: 'AI Error', children: err.message || err });
+        setTimeout(() => process.exit(1), 100);
+        return;
       }
 
       if (!response) {
-        console.log('empty response from ai');
-        process.exit(1);
+        await show(Alert, { type: 'warning', children: 'Empty response from AI' });
+        setTimeout(() => process.exit(1), 100);
+        return;
       }
 
-      console.log(response);
+      await show(Alert, { type: 'success', title: 'Explanation', children: response });
     });
 }

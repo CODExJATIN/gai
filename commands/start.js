@@ -1,45 +1,61 @@
-import readline from 'readline';
 import { setConfig } from '../utils/config.js';
-
-function ask(rl, question) {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => resolve(answer.trim()));
-  });
-}
+import React from 'react';
+import { prompt, show } from '../ui/prompt.jsx';
+import SelectPrompt from '../ui/SelectPrompt.jsx';
+import TextPrompt from '../ui/TextPrompt.jsx';
+import Alert from '../ui/Alert.jsx';
+import { getBanner } from '../utils/banner.js';
 
 export default function startCommand(program) {
   program
     .command('start')
     .description('configure ai provider and credentials')
     .action(async () => {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-      const provider = (await ask(rl, 'provider (gemini/ollama): ')).toLowerCase() || 'gemini';
+      console.log(getBanner());
+      const providerItem = await prompt(SelectPrompt, {
+        message: 'Select AI Provider',
+        items: [
+          { label: 'Gemini (Google)', value: 'gemini' },
+          { label: 'Ollama (Local)', value: 'ollama' }
+        ]
+      });
+      const provider = providerItem.value;
 
       if (provider === 'gemini') {
-        const apiKey = await ask(rl, 'api key: ');
+        const apiKey = await prompt(TextPrompt, {
+          message: 'API Key:',
+          isSecret: true
+        });
         if (!apiKey) {
-          console.log('api key is required');
-          rl.close();
-          process.exit(1);
+          await show(Alert, { type: 'error', title: 'Error', children: 'API key is required' });
+          setTimeout(() => process.exit(1), 100);
+          return;
         }
-        const model = (await ask(rl, 'model (gemini-2.0-flash): ')) || 'gemini-2.0-flash';
+        const model = await prompt(TextPrompt, {
+          message: 'Model (leave blank for gemini-2.5-flash):',
+          defaultValue: 'gemini-2.5-flash'
+        });
         setConfig('provider', provider);
         setConfig('gemini.apiKey', apiKey);
         setConfig('gemini.model', model);
       } else if (provider === 'ollama') {
-        const model = (await ask(rl, 'model (llama3): ')) || 'llama3';
-        const endpoint = (await ask(rl, 'endpoint (http://localhost:11434): ')) || 'http://localhost:11434';
+        const model = await prompt(TextPrompt, {
+          message: 'Model (leave blank for llama3):',
+          defaultValue: 'llama3'
+        });
+        const endpoint = await prompt(TextPrompt, {
+          message: 'Endpoint (leave blank for http://localhost:11434):',
+          defaultValue: 'http://localhost:11434'
+        });
         setConfig('provider', provider);
         setConfig('ollama.model', model);
         setConfig('ollama.endpoint', endpoint);
       } else {
-        console.log('unknown provider: ' + provider);
-        rl.close();
-        process.exit(1);
+        await show(Alert, { type: 'error', title: 'Error', children: 'Unknown provider' });
+        setTimeout(() => process.exit(1), 100);
+        return;
       }
 
-      rl.close();
-      console.log('config saved');
+      await show(Alert, { type: 'success', title: 'Success', children: 'Configuration explicitly saved' });
     });
 }

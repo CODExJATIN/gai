@@ -2,14 +2,15 @@ import readline from 'readline';
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import React from 'react';
+import { render } from 'ink';
+import { prompt, show } from '../ui/prompt.jsx';
+import TextPrompt from '../ui/TextPrompt.jsx';
+import ConfirmPrompt from '../ui/ConfirmPrompt.jsx';
+import LoadingSpinner from '../ui/LoadingSpinner.jsx';
+import Alert from '../ui/Alert.jsx';
 import { getAI } from '../ai/index.js';
 import { getConfig } from '../utils/config.js';
-
-function ask(rl, question) {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => resolve(answer.trim()));
-  });
-}
 
 function listFiles(dir, prefix = '', maxEntries = 100) {
   const entries = [];
@@ -42,18 +43,16 @@ export default function initCommand(program) {
     .command('init')
     .description('initialize a new git repository')
     .action(async () => {
-      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-      let name = await ask(rl, 'repo name (leave empty for current): ');
+      let name = await prompt(TextPrompt, { message: 'Repo name (leave empty for current):' });
       if (!name) name = '.';
 
       const dir = path.resolve(name);
       const isCurrent = dir === process.cwd();
 
       if (!isCurrent && fs.existsSync(dir)) {
-        console.log('directory already exists: ' + name);
-        rl.close();
-        process.exit(1);
+        await show(Alert, { type: 'error', title: 'Error', children: 'Directory already exists: ' + name });
+        setTimeout(() => process.exit(1), 100);
+        return;
       }
 
       if (!isCurrent) {
@@ -61,23 +60,23 @@ export default function initCommand(program) {
       }
 
       if (!fs.existsSync(path.join(dir, '.git'))) {
-        execSync('git init', { cwd: dir, stdio: 'inherit' });
-        console.log('repo initialized: ' + (isCurrent ? 'current directory' : name));
+        execSync('git init', { cwd: dir, stdio: 'ignore' });
+        await show(Alert, { type: 'success', children: 'Repo initialized: ' + (isCurrent ? 'current directory' : name) });
       } else {
-        console.log('git repo already exists in ' + (isCurrent ? 'current directory' : name));
+        await show(Alert, { type: 'info', children: 'Git repo already exists in ' + (isCurrent ? 'current directory' : name) });
       }
 
       // .gitignore prompt
       const gitignorePath = path.join(dir, '.gitignore');
       if (!fs.existsSync(gitignorePath)) {
-        const wantIgnore = (await ask(rl, 'create .gitignore? (y/n) ')).toLowerCase();
+        const wantIgnore = await prompt(ConfirmPrompt, { message: 'Create .gitignore?' });
 
-        if (wantIgnore === 'y') {
+        if (wantIgnore) {
           const config = getConfig();
           if (!config.provider) {
-            console.log('no ai provider configured\nrun "gai start" first');
-            rl.close();
-            process.exit(1);
+            await show(Alert, { type: 'error', children: 'No ai provider configured. Run "gai start" first.' });
+            setTimeout(() => process.exit(1), 100);
+            return;
           }
 
           const fileList = listFiles(dir);
@@ -94,18 +93,19 @@ Rules:
 - Ensure source files like .js and .json are NOT ignored`;
 
           try {
-            console.log('analyzing project...');
+            const spinner = render(React.createElement(LoadingSpinner, { message: 'Analyzing project...' }));
             let content = await ai.generate(prompt);
+            spinner.unmount();
             if (content) {
               // strip markdown fencing if AI included it
               content = content.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '').trim();
               fs.writeFileSync(gitignorePath, content + '\n');
-              console.log('.gitignore created');
+              await show(Alert, { type: 'success', children: '.gitignore created' });
             } else {
-              console.log('empty response from ai');
+              await show(Alert, { type: 'warning', children: 'Empty response from AI' });
             }
           } catch (err) {
-            console.log('ai error: ' + (err.message || err));
+            await show(Alert, { type: 'error', title: 'AI Error', children: err.message || err });
           }
         }
       }
@@ -116,36 +116,32 @@ Rules:
         const hasStaged = execSync('git diff --staged', { cwd: dir, encoding: 'utf-8' }).trim().length > 0;
         if (hasStaged) {
           execSync('git commit -m "chore: initial commit"', { cwd: dir, stdio: 'ignore' });
-          console.log('created initial commit');
+          await show(Alert, { type: 'success', children: 'Created initial commit' });
         }
       } catch (err) {
         // ignore commit errors (e.g. if nothing to commit)
       }
 
-      rl.close();
-
       // GitHub repo creation prompt
-      const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
-      const wantGitHub = (await ask(rl2, 'create GitHub repository? (y/n) ')).toLowerCase();
+      const wantGitHub = await prompt(ConfirmPrompt, { message: 'Create GitHub repository?' });
 
-      if (wantGitHub === 'y') {
+      if (wantGitHub) {
         try {
           execSync('gh --version', { stdio: 'ignore' });
-          const isPublic = (await ask(rl2, 'public repository? (y/n) ')).toLowerCase() === 'y';
+          const isPublic = await prompt(ConfirmPrompt, { message: 'Public repository?' });
           const visibility = isPublic ? '--public' : '--private';
           
-          console.log(`creating ${isPublic ? 'public' : 'private'} GitHub repository...`);
+          await show(Alert, { type: 'info', children: `Creating ${isPublic ? 'public' : 'private'} GitHub repository...` });
           execSync(`gh repo create ${name === '.' ? path.basename(process.cwd()) : name} ${visibility} --source=. --remote=origin --push`, { 
             cwd: dir, 
-            stdio: 'inherit' 
+            stdio: 'ignore' 
           });
-          console.log('GitHub repository created and pushed');
+          await show(Alert, { type: 'success', children: 'GitHub repository created and pushed' });
         } catch (err) {
-          console.log('could not create GitHub repository. ensure "gh" CLI is installed and authenticated.');
+          await show(Alert, { type: 'error', title: 'Error', children: 'Could not create GitHub repository. Ensure "gh" CLI is installed and authenticated.' });
         }
       }
 
-      rl2.close();
-      console.log('run "gai start" to configure ai provider');
+      await show(Alert, { type: 'info', children: 'Run "gai start" to configure AI provider' });
     });
 }

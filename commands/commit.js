@@ -1,7 +1,11 @@
 import { execSync } from 'child_process';
-import readline from 'readline';
+import React from 'react';
+import { render } from 'ink';
 import { getAI } from '../ai/index.js';
 import { getConfig } from '../utils/config.js';
+import StagingPrompt from '../ui/StagingPrompt.jsx';
+import LoadingSpinner from '../ui/LoadingSpinner.jsx';
+import ConfirmCommit from '../ui/ConfirmCommit.jsx';
 
 const MAX_DIFF_LENGTH = 10000;
 
@@ -18,15 +22,7 @@ function getStagedDiff() {
   return execSync('git diff --staged', { encoding: 'utf-8' });
 }
 
-function ask(question) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim().toLowerCase());
-    });
-  });
-}
+
 
 export default function commitCommand(program) {
   program
@@ -59,18 +55,19 @@ export default function commitCommand(program) {
         // Only run interactive prompt if we're in a TTY
         if (process.stdin.isTTY) {
           try {
-            const enquirer = await import('enquirer');
-            const MultiSelect = enquirer.MultiSelect || enquirer.default.MultiSelect;
-            
-            const prompt = new MultiSelect({
-              name: 'files',
-              message: 'Select files to stage (Space to select, Enter to confirm)',
-              choices: files,
-              result(names) {
-                return names; // Return selected file names array
-              }
+            let selectedFiles = [];
+            await new Promise((resolve, reject) => {
+              const { unmount } = render(
+                React.createElement(StagingPrompt, {
+                  files,
+                  onConfirm: (names) => {
+                    selectedFiles = names;
+                    unmount();
+                    resolve();
+                  }
+                })
+              );
             });
-            const selectedFiles = await prompt.run();
             
             if (selectedFiles.length > 0) {
               execSync(`git add ${selectedFiles.map(f => `"${f}"`).join(' ')}`);
@@ -80,7 +77,6 @@ export default function commitCommand(program) {
             if (err) {
               console.log('error during prompt: ' + (err.message || err));
             }
-            // Prompt cancelled by user (Ctrl+C) or errored
             process.exit(err ? 1 : 0);
           }
         }
@@ -113,7 +109,9 @@ ${truncated}`;
 
       let message;
       try {
+        const { unmount } = render(React.createElement(LoadingSpinner, { message: 'Generating commit message...' }));
         message = await ai.generate(prompt);
+        unmount();
         if (message) {
           // Strip markdown code blocks
           message = message.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '').replace(/^```/g, '').replace(/```$/g, '').trim();
@@ -135,11 +133,23 @@ ${truncated}`;
         return;
       }
 
-      console.log('\n' + message + '\n');
-      const answer = await ask('commit? (y/n) ');
-
-      if (answer === 'y') {
-        execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
-      }
+      console.log('');
+      await new Promise((resolve) => {
+        const { unmount } = render(
+          React.createElement(ConfirmCommit, {
+            message,
+            onConfirm: () => {
+              unmount();
+              execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
+              resolve();
+            },
+            onCancel: () => {
+              unmount();
+              console.log('commit aborted');
+              resolve();
+            }
+          })
+        );
+      });
     });
 }
