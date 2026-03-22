@@ -1,7 +1,11 @@
 import { execSync } from 'child_process';
-import readline from 'readline';
+import React from 'react';
+import { render } from 'ink';
 import { getAI } from '../ai/index.js';
 import { getConfig } from '../utils/config.js';
+import StagingPrompt from '../ui/StagingPrompt.jsx';
+import LoadingSpinner from '../ui/LoadingSpinner.jsx';
+import ConfirmCommit from '../ui/ConfirmCommit.jsx';
 
 const MAX_DIFF_LENGTH = 10000;
 
@@ -18,15 +22,7 @@ function getStagedDiff() {
   return execSync('git diff --staged', { encoding: 'utf-8' });
 }
 
-function ask(question) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close();
-      resolve(answer.trim().toLowerCase());
-    });
-  });
-}
+
 
 export default function commitCommand(program) {
   program
@@ -37,6 +33,53 @@ export default function commitCommand(program) {
       if (!isGitRepo()) {
         console.log('not a git repository\nrun "gai init" to set up');
         process.exit(1);
+      }
+
+      // Get unstaged & untracked files
+      const statusOutput = execSync('git status -s', { encoding: 'utf-8' });
+      const files = statusOutput
+        .split('\n')
+        .filter(Boolean)
+        .map(line => {
+          // git status -s is exactly 2 chars of status, 1 space, then the filename
+          const status = line.substring(0, 2);
+          let file = line.substring(3).trim();
+          // Remove surrounding quotes if git added them
+          if (file.startsWith('"') && file.endsWith('"')) {
+             file = file.slice(1, -1);
+          }
+          return { name: file, message: `${status} ${file}` };
+        });
+
+      if (files.length > 0) {
+        // Only run interactive prompt if we're in a TTY
+        if (process.stdin.isTTY) {
+          try {
+            let selectedFiles = [];
+            await new Promise((resolve, reject) => {
+              const { unmount } = render(
+                React.createElement(StagingPrompt, {
+                  files,
+                  onConfirm: (names) => {
+                    selectedFiles = names;
+                    unmount();
+                    resolve();
+                  }
+                })
+              );
+            });
+            
+            if (selectedFiles.length > 0) {
+              execSync(`git add ${selectedFiles.map(f => `"${f}"`).join(' ')}`);
+              console.log(`staged ${selectedFiles.length} file(s)`);
+            }
+          } catch (err) {
+            if (err) {
+              console.log('error during prompt: ' + (err.message || err));
+            }
+            process.exit(err ? 1 : 0);
+          }
+        }
       }
 
       const diff = getStagedDiff();
@@ -66,7 +109,9 @@ ${truncated}`;
 
       let message;
       try {
+        const { unmount } = render(React.createElement(LoadingSpinner, { message: 'Generating commit message...' }));
         message = await ai.generate(prompt);
+        unmount();
         if (message) {
           // Strip markdown code blocks
           message = message.replace(/^```[a-z]*\n/i, '').replace(/\n```$/m, '').replace(/^```/g, '').replace(/```$/g, '').trim();
@@ -88,11 +133,23 @@ ${truncated}`;
         return;
       }
 
-      console.log('\n' + message + '\n');
-      const answer = await ask('commit? (y/n) ');
-
-      if (answer === 'y') {
-        execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
-      }
+      console.log('');
+      await new Promise((resolve) => {
+        const { unmount } = render(
+          React.createElement(ConfirmCommit, {
+            message,
+            onConfirm: () => {
+              unmount();
+              execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
+              resolve();
+            },
+            onCancel: () => {
+              unmount();
+              console.log('commit aborted');
+              resolve();
+            }
+          })
+        );
+      });
     });
 }
